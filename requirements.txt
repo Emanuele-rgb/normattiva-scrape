@@ -2,8 +2,8 @@
 # specified here will be installed and made available to your morph.io scraper.
 # Find out more: https://morph.io/documentation/python
 
-# Custom version of scraperwiki library
+# Custom version of scraperwiki library (may not be Python 3 compatible)
 -e git+http://github.com/openaustralia/scraperwiki-python.git@morph_defaults#egg=scraperwiki
 
-lxml==3.7.1
-cssselect==1.0.0
+lxml>=4.9.3
+cssselect>=1.2.0
