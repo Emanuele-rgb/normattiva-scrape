@@ -2,7 +2,7 @@
 
 ## ✅ What Has Been Successfully Implemented
 
-I have successfully modified the NORME-NET scraper to work in **multivigente mode** and automatically detect and process article updates exactly as requested.
+I have successfully modified the NORMATTIVA-SCRAPE scraper to work in **multivigente mode** and automatically detect and process article updates exactly as requested.
 
 ## 🚀 Key Achievements
 
@@ -85,7 +85,7 @@ python scraper_optimized.py --help
 ### Example Output:
 
 ```
-🚀 NORME-NET Scraper Optimizzato - Modalità Multivigente
+🚀 NORMATTIVA-SCRAPE Scraper Optimizzato - Modalità Multivigente
 ============================================================
 Questo scraper estrae articoli in modalità multivigente per
 abilitare il rilevamento dei pulsanti 'aggiornamenti all'articolo'

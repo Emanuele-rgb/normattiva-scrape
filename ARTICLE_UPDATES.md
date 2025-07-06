@@ -1,6 +1,6 @@
 # Article Updates Feature
 
-This document describes the new article updates feature that has been added to the NORME-NET scraper. This feature automatically detects and handles the "aggiornamenti all'articolo" (article updates) functionality found on Italian legislation websites.
+This document describes the new article updates feature that has been added to the NORMATTIVA-SCRAPE scraper. This feature automatically detects and handles the "aggiornamenti all'articolo" (article updates) functionality found on Italian legislation websites.
 
 ## 🚀 Features
 

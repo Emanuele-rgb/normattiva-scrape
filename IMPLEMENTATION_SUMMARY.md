@@ -2,7 +2,7 @@
 
 ## ✅ What Has Been Implemented
 
-I have successfully created a comprehensive article updates feature for the NORME-NET scraper that handles the "aggiornamenti all'articolo" functionality shown in your screenshots. Here's what has been implemented:
+I have successfully created a comprehensive article updates feature for the NORMATTIVA-SCRAPE scraper that handles the "aggiornamenti all'articolo" functionality shown in your screenshots. Here's what has been implemented:
 
 ## 📁 New Files Created
 
@@ -125,7 +125,7 @@ The main scraper has been enhanced with:
 ### Database Schema Test ✅
 
 ```powershell
-PS F:\CODING\norme-net> python simple_test.py
+PS F:\CODING\normattiva-scrape> python simple_test.py
 🔧 Article Updates Schema Test
 ========================================
 ✅ modifiche_normative table exists
@@ -138,7 +138,7 @@ PS F:\CODING\norme-net> python simple_test.py
 ### Management Tools Test ✅
 
 ```powershell
-PS F:\CODING\norme-net> python article_updates_manager.py stats
+PS F:\CODING\normattiva-scrape> python article_updates_manager.py stats
 📊 Article Modifications Statistics
 ========================================
 Total Modifications: 1

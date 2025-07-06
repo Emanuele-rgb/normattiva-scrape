@@ -2,7 +2,7 @@
 
 ## Summary
 
-Successfully updated the norme-net database schema to use `titoloAtto` instead of `titolo` as the title field name. This change ensures consistency with the expected data structure shown in the user's screenshot.
+Successfully updated the normattiva-scrape database schema to use `titoloAtto` instead of `titolo` as the title field name. This change ensures consistency with the expected data structure shown in the user's screenshot.
 
 ## Changes Made
 

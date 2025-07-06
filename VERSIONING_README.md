@@ -1,8 +1,8 @@
-# 📚 NORME-NET - Article Versioning System
+# 📚 NORMATTIVA-SCRAPE - Article Versioning System
 
 ## Overview
 
-This enhanced version of NORME-NET supports complete article versioning with historical tracking of all changes. The system captures both the **original content** (`orig.`) and all **updates** (`agg.1`, `agg.2`, etc.) with their respective **validity dates**.
+This enhanced version of NORMATTIVA-SCRAPE supports complete article versioning with historical tracking of all changes. The system captures both the **original content** (`orig.`) and all **updates** (`agg.1`, `agg.2`, etc.) with their respective **validity dates**.
 
 ## Features
 
@@ -196,7 +196,7 @@ AND (data_fine_vigore IS NULL OR data_fine_vigore > '2020-06-01');
 ## File Structure
 
 ```
-norme-net/
+normattiva-scrape/
 ├── enhanced_schema_versioning.sql     # Database schema with versioning
 ├── scraper_with_versioning.py        # Enhanced scraper with version support
 ├── test_versioning.py                # Comprehensive test suite
@@ -250,4 +250,4 @@ Run tests with:
 python test_versioning.py
 ```
 
-This versioning system ensures that NORME-NET preserves the complete evolution of Italian legal documents, making it a powerful tool for legal research and historical analysis.
+This versioning system ensures that NORMATTIVA-SCRAPE preserves the complete evolution of Italian legal documents, making it a powerful tool for legal research and historical analysis.

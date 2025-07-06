@@ -2,7 +2,7 @@
 
 ## Riepilogo dell'Implementazione
 
-Ho implementato con successo l'ottimizzazione del database NORME-NET, trasformandolo da una struttura semplice nodi-archi a una struttura relazionale avanzata ottimizzata per sistemi RAG e analisi legali.
+Ho implementato con successo l'ottimizzazione del database NORMATTIVA-SCRAPE, trasformandolo da una struttura semplice nodi-archi a una struttura relazionale avanzata ottimizzata per sistemi RAG e analisi legali.
 
 ## ✅ File Creati/Modificati
 
@@ -154,7 +154,7 @@ JOIN documenti_normativi d ON a.documento_id = d.id;
 
 ## 🏆 Conclusioni
 
-L'ottimizzazione è stata completata con successo! Il database NORME-NET ora dispone di:
+L'ottimizzazione è stata completata con successo! Il database NORMATTIVA-SCRAPE ora dispone di:
 
 - ✅ **Struttura moderna** pronta per sistemi RAG
 - ✅ **Performance ottimizzate** con indici strategici

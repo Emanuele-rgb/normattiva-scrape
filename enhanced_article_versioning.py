@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Enhanced article versioning functionality for NORME-NET
+Enhanced article versioning functionality for NORMATTIVA-SCRAPE
 Handles original content (orig.) and updates (agg.1, agg.2, etc.) with validity dates
 """
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database migration script to rename 'titolo' column to 'titoloAtto' in the norme-net database.
+Database migration script to rename 'titolo' column to 'titoloAtto' in the normattiva-scrape database.
 This ensures compatibility with the new schema that uses 'titoloAtto' as the field name.
 """
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Successfully enhanced the NORME-NET versioning system to properly extract text from the `bodyTesto` div class and capture correlated articles from links within it, exactly as requested.
+Successfully enhanced the NORMATTIVA-SCRAPE versioning system to properly extract text from the `bodyTesto` div class and capture correlated articles from links within it, exactly as requested.
 
 ## ✅ Problems Solved
 
@@ -156,4 +156,4 @@ python scraper_with_versioning.py "urn:nir:stato:legge:2020-03-17;18"
 - ✅ **Backward compatibility**: All existing functionality preserved
 - ✅ **Test coverage**: Comprehensive tests validate all new features
 
-The NORME-NET system now properly extracts article text from the bodyTesto div and captures all correlated articles from the links within it, providing a complete solution for legal document analysis and cross-referencing!
+The NORMATTIVA-SCRAPE system now properly extracts article text from the bodyTesto div and captures all correlated articles from the links within it, providing a complete solution for legal document analysis and cross-referencing!

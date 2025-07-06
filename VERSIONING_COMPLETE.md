@@ -2,7 +2,7 @@
 
 ## Overview
 
-Successfully implemented complete article versioning system for NORME-NET that captures:
+Successfully implemented complete article versioning system for NORMATTIVA-SCRAPE that captures:
 
 - **Original content** (`orig.`)
 - **All updates** (`agg.1`, `agg.2`, etc.)

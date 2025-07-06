@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Enhanced scraper for NORME-NET with full article versioning support
+Enhanced scraper for NORMATTIVA-SCRAPE with full article versioning support
 Handles original content (orig.) and all updates (agg.1, agg.2, etc.) with validity dates
 """
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NORME-NET Unified Scraper - Enhanced Legal Document Scraper
+NORMATTIVA-SCRAPE Unified Scraper - Enhanced Legal Document Scraper
 Supports bodyTesto extraction, correlated articles, and versioning (original + aggiornamenti)
 Main entry point: python scraper_optimized.py [year] [num_docs]
 """
@@ -2116,7 +2116,7 @@ def process_permalinks(permalinks_and_urn, session=None):
 
 if __name__ == '__main__':
 
-    print("🚀 NORME-NET Unified Scraper - Enhanced Legal Document Scraper")
+    print("🚀 NORMATTIVA-SCRAPE Unified Scraper - Enhanced Legal Document Scraper")
     print("=" * 70)
     print("✓ bodyTesto extraction for testo_completo and testo_pulito")
     print("✓ Correlated articles extraction from links within bodyTesto")

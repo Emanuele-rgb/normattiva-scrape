@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script per pulire/resettare il database di NORME-NET
+Script per pulire/resettare il database di NORMATTIVA-SCRAPE
 """
 
 import sqlite3
@@ -195,7 +195,7 @@ def main():
     """
     Funzione principale con menu interattivo
     """
-    print("🗃️  NORME-NET Database Manager")
+    print("🗃️  NORMATTIVA-SCRAPE Database Manager")
     print("=" * 40)
     
     if len(sys.argv) > 1:

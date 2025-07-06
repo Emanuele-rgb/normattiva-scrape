@@ -1,5 +1,5 @@
 -- ========================================
--- COMPLETE SCHEMA FOR NORME-NET WITH VERSIONING
+-- COMPLETE SCHEMA FOR NORMATTIVA-SCRAPE WITH VERSIONING
 -- ========================================
 
 -- Create all tables from scratch including versioning
