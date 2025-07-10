@@ -2,8 +2,14 @@
 """
 NORMATTIVA-SCRAPE Unified Scraper - Enhanced Legal Document Scraper
 Supports bodyTesto extraction, correlated articles, and versioning (original + aggiornamenti)
+
+Features:
+- Allegati length check: Skips allegati longer than MAX_ALLEGATO_LENGTH (500K chars)
+- Automatic content filtering to prevent database bloat from oversized attachments
+
 Main entry point: python scraper_optimized.py [year] [num_docs]
 """
+
 
 from collections import OrderedDict
 import re
@@ -18,6 +24,11 @@ import time
 import copy
 import os
 
+# Ensure UTF-8 output for Unicode (emoji) in Windows terminals
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 # Import the FonteOriginePopulator for automatic population
 try:
     from populate_fonte_origine import FonteOriginePopulator
@@ -26,6 +37,9 @@ except ImportError:
     FonteOriginePopulator = None
 
 normattiva_url = "http://www.normattiva.it"
+
+# Configuration constants
+MAX_ALLEGATO_LENGTH = 50000  # Maximum character length for allegati (50K chars)
 
 # ========================================
 # URL UTILITY FUNCTIONS
@@ -143,7 +157,7 @@ def extract_article_activation_date(article_element):
                     try:
                         # Converti in formato ISO
                         parsed_date = datetime.strptime(f"{year}-{month.zfill(2)}-{day.zfill(2)}", "%Y-%m-%d").date()
-                        print(f"🗓️ Found article activation date: {parsed_date}")
+                        print(f"DATE: Found article activation date: {parsed_date}")
                         return parsed_date
                     except ValueError:
                         continue
@@ -180,7 +194,7 @@ def extract_article_end_date(article_element):
                     try:
                         # Converti in formato ISO
                         parsed_date = datetime.strptime(f"{year}-{month.zfill(2)}-{day.zfill(2)}", "%Y-%m-%d").date()
-                        print(f"⏰ Found article end date: {parsed_date}")
+                        print(f"END DATE: Found article end date: {parsed_date}")
                         return parsed_date
                     except ValueError:
                         continue
@@ -244,8 +258,15 @@ def extract_allegato_number(text):
 def fetch_allegato_content(allegato_url, session):
     """Fetch e pulisce il contenuto di un allegato"""
     try:
-        response = session.get(allegato_url)
+        # Add timeout for allegato requests
+        response = session.get(allegato_url, timeout=30)
         if response.status_code == 200:
+            # Pre-check content length before processing
+            content_length = len(response.content)
+            if content_length > MAX_ALLEGATO_LENGTH * 3:
+                print(f"⚠️ Allegato content too large ({content_length} bytes), skipping")
+                return ""
+            
             html_content = lxml.html.fromstring(response.content)
             
             # Cerca il contenuto dell'allegato
@@ -261,11 +282,26 @@ def fetch_allegato_content(allegato_url, session):
                 if elements:
                     content = elements[0].text_content().strip()
                     if content:
-                        return clean_article_text(content)
+                        cleaned_content = clean_article_text(content)
+                        # Check content length before returning
+                        if len(cleaned_content) > MAX_ALLEGATO_LENGTH:
+                            print(f"⚠️ Allegato content too long ({len(cleaned_content)} chars), skipping")
+                            return ""
+                        return cleaned_content
             
             # Fallback: tutto il testo
-            return clean_article_text(html_content.text_content())
+            fallback_content = clean_article_text(html_content.text_content())
+            if len(fallback_content) > MAX_ALLEGATO_LENGTH:
+                print(f"⚠️ Allegato fallback content too long ({len(fallback_content)} chars), skipping")
+                return ""
+            return fallback_content
             
+    except requests.exceptions.Timeout:
+        print(f"⚠️ Timeout fetching allegato content from {allegato_url}")
+        return ""
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Request error fetching allegato content: {e}")
+        return ""
     except Exception as e:
         print(f"❌ Error fetching allegato content: {e}")
         return ""
@@ -276,10 +312,27 @@ def process_allegato_content(allegato_url, allegato_number, session, documento_i
     """Process an allegato as a special type of article"""
     try:
         print(f"[process_allegato] Fetching allegato {allegato_number}: {allegato_url}")
-        allegato_response = session.get(allegato_url)
+        
+        # Add timeout to prevent hanging on large allegati
+        try:
+            allegato_response = session.get(allegato_url, timeout=30)
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ SKIPPING Allegato {allegato_number}: Request failed: {e}")
+            return None
         
         if allegato_response.status_code != 200:
             print(f"[process_allegato] Error {allegato_response.status_code} for allegato {allegato_number}")
+            return None
+        
+        # Pre-filter by response content length to avoid processing huge allegati
+        content_length = len(allegato_response.content)
+        if content_length > MAX_ALLEGATO_LENGTH * 3:  # Give more buffer for HTML markup
+            print(f"⚠️ SKIPPING Allegato {allegato_number}: Response too large ({content_length} bytes > {MAX_ALLEGATO_LENGTH * 3} max)")
+            return None
+        
+        # Quick check: if response is suspiciously large, skip it immediately
+        if content_length > MAX_ALLEGATO_LENGTH:
+            print(f"⚠️ SKIPPING Allegato {allegato_number}: Content too large ({content_length} bytes > {MAX_ALLEGATO_LENGTH} max)")
             return None
         
         allegato_html = lxml.html.fromstring(allegato_response.content)
@@ -304,6 +357,14 @@ def process_allegato_content(allegato_url, allegato_number, session, documento_i
         
         # Extract end date
         end_date = extract_article_end_date(allegato_html)
+        
+        # Check if allegato content is too long
+        if len(testo_completo) > MAX_ALLEGATO_LENGTH:
+            print(f"⚠️ SKIPPING Allegato {allegato_number}: Content too long ({len(testo_completo)} chars > {MAX_ALLEGATO_LENGTH} max)")
+            print(f"   Allegato title: {allegato_title}")
+            return None
+        
+        print(f"✓ Allegato {allegato_number} size OK: {len(testo_completo)} chars")
         
         # Save allegato as a special article
         articolo_data = {
@@ -374,7 +435,7 @@ def init_simplified_database():
                 conn.commit()
                 print("✓ Simplified versioning columns added successfully")
             else:
-                print("✓ Using existing simplified database schema")
+                print("+ Using existing simplified database schema")
             
         conn.close()
     except Exception as e:
@@ -526,7 +587,7 @@ def extract_correlated_articles(body_element):
                     if not any(ref['href'] == href for ref in correlated_articles):
                         correlated_articles.append(article_ref)
         
-        print(f"🔗 Found {len(correlated_articles)} correlated articles")
+        print(f"LINKS: Found {len(correlated_articles)} correlated articles")
         return correlated_articles
         
     except Exception as e:
@@ -534,7 +595,7 @@ def extract_correlated_articles(body_element):
         return []
 
 def parse_urn_components(urn: str) -> dict:
-    """Estrae componenti da URN: urn:nir:stato:legge:2023-12-01;123 or urn:nir:2000;13"""
+    """Estrae componenti da URN: urn:nir:stato:legge:2023-12-01;123 or urn:nir:2000;13 or urn:nir:stato:regio.decreto:1862;606"""
     if not urn or not urn.startswith("urn:nir:"):
         return {}
     
@@ -550,6 +611,22 @@ def parse_urn_components(urn: str) -> dict:
                     "stato": parts[0],
                     "tipo": parts[1],
                     "data": parts[2] if len(parts) > 2 else "",
+                    "numero": numero
+                }
+            # Handle older regio.decreto format: urn:nir:stato:regio.decreto:1862;606
+            elif len(parts) == 3 and ("regio.decreto" in parts[1] or "legge" in parts[1]):
+                return {
+                    "stato": parts[0],
+                    "tipo": parts[1],
+                    "data": parts[2],  # Year
+                    "numero": numero
+                }
+            # Handle ministry decree format: urn:nir:ministero.pubblica.istruzione:decreto.ministeriale:1870;6066
+            elif len(parts) == 3 and ("ministero" in parts[0] or "decreto.ministeriale" in parts[1]):
+                return {
+                    "stato": parts[0],  # ministero.pubblica.istruzione
+                    "tipo": parts[1],   # decreto.ministeriale
+                    "data": parts[2],   # Year
                     "numero": numero
                 }
             # Handle short URN format: urn:nir:2000;13
@@ -572,6 +649,7 @@ def parse_urn_components(urn: str) -> dict:
             
     except Exception as e:
         print(f"Error parsing URN {urn}: {e}")
+        return {}
     
     return {}
 
@@ -663,15 +741,18 @@ def save_documento_normativo(documento_data: dict) -> int:
         
         # Verifica se il documento esiste già
         cursor.execute(
-            "SELECT id FROM documenti_normativi WHERE urn = ? OR (numero = ? AND anno = ? AND tipo_atto = ?)",
+            "SELECT id, titoloAtto FROM documenti_normativi WHERE urn = ? OR (numero = ? AND anno = ? AND tipo_atto = ?)",
             [documento_data.get('urn', ''), documento_data.get('numero', ''), 
              documento_data.get('anno', 0), documento_data.get('tipo_atto', '')]
         )
         existing = cursor.fetchone()
         
         if existing:
-            doc_id = existing[0]
-            print(f"Document already exists with id: {doc_id}")
+            doc_id, existing_title = existing
+            print(f"✅ Document already exists with id: {doc_id}")
+            print(f"   Title: {existing_title}")
+            print(f"   URN: {documento_data.get('urn', 'N/A')}")
+            print(f"   Numero: {documento_data.get('numero', 'N/A')}, Anno: {documento_data.get('anno', 'N/A')}")
             conn.close()
             return doc_id
         
@@ -715,6 +796,21 @@ def save_articolo(articolo_data: dict) -> int:
     try:
         conn = sqlite3.connect('data.sqlite')
         cursor = conn.cursor()
+        
+        # Check if article already exists
+        cursor.execute(
+            "SELECT id, titoloAtto FROM articoli WHERE documento_id = ? AND numero_articolo = ?",
+            [articolo_data['documento_id'], articolo_data['numero_articolo']]
+        )
+        existing_article = cursor.fetchone()
+        
+        if existing_article:
+            article_id, existing_title = existing_article
+            print(f"✅ Article {articolo_data['numero_articolo']} already exists with id: {article_id}")
+            print(f"   Title: {existing_title}")
+            print(f"   Document ID: {articolo_data['documento_id']}")
+            conn.close()
+            return article_id
         
         # Determine status based on data_cessazione
         status = 'abrogato' if articolo_data.get('data_cessazione') else 'vigente'
@@ -1180,7 +1276,7 @@ def extract_single_version_content(article_url, version_info, session, documento
             'data_cessazione': end_date
         }
         
-        print(f"✓ Extracted version {version_info.get('tipo_versione', 'unknown')}: {len(testo_completo)} chars, status: {status}")
+        print(f"+ Extracted version {version_info.get('tipo_versione', 'unknown')}: {len(testo_completo)} chars, status: {status}")
         return version_data
         
     except Exception as e:
@@ -1303,7 +1399,7 @@ def process_article_element_with_bodytext(article_element, article_number, docum
             articoli_correlati = extract_correlated_articles(body_div)
             
             print(f"📄 Article {article_number}: extracted {len(testo_completo)} chars from bodyTesto")
-            print(f"🔗 Article {article_number}: found {len(articoli_correlati)} correlated articles")
+            print(f"LINKS: Article {article_number}: found {len(articoli_correlati)} correlated articles")
             
         else:
             # Fallback: extract from general content
@@ -1546,7 +1642,7 @@ def create_single_article_from_content(html_element, documento_id, base_url):
         return save_articolo_with_versions(articolo_data)
         
     except Exception as e:
-        print(f"❌ Error creating single article: {e}")
+        print(f"[ERROR] Error creating single article: {e}")
         return None
 
 def extract_all_articles_with_bodytext(base_url, session, documento_id):
@@ -1565,6 +1661,21 @@ def save_articolo_with_versions(articolo_data):
         conn = sqlite3.connect('data.sqlite')
         cursor = conn.cursor()
         
+        # Check if article already exists
+        cursor.execute(
+            "SELECT id, titoloAtto FROM articoli WHERE documento_id = ? AND numero_articolo = ?",
+            [articolo_data['documento_id'], articolo_data['numero_articolo']]
+        )
+        existing_article = cursor.fetchone()
+        
+        if existing_article:
+            article_id, existing_title = existing_article
+            print(f"✅ Article {articolo_data['numero_articolo']} already exists with id: {article_id}")
+            print(f"   Title: {existing_title}")
+            print(f"   Document ID: {articolo_data['documento_id']}")
+            conn.close()
+            return article_id
+        
         # Check if we have the simplified versioning columns
         cursor.execute("PRAGMA table_info(articoli)")
         columns = [column[1] for column in cursor.fetchall()]
@@ -1579,7 +1690,7 @@ def save_articolo_with_versions(articolo_data):
         return result
             
     except Exception as e:
-        print(f"❌ Error saving article with versions: {e}")
+        print(f"[ERROR] Error saving article with versions: {e}")
         if 'conn' in locals():
             conn.close()
         return None
@@ -1642,7 +1753,7 @@ def save_articolo_with_simplified_versioning(articolo_data, cursor, conn):
             if tipo_versione == 'orig' or base_article_id is None:
                 base_article_id = article_id
             
-            print(f"✓ Saved article version {tipo_versione} (ID: {article_id}, status: {status})")
+            print(f"+ Saved article version {tipo_versione} (ID: {article_id}, status: {status})")
         
         # Update articolo_base_id for update versions
         if base_article_id and len(article_ids) > 1:
@@ -1654,7 +1765,7 @@ def save_articolo_with_simplified_versioning(articolo_data, cursor, conn):
         
         conn.commit()
         
-        print(f"✓ Saved article {articolo_data['numero_articolo']} with {len(versions)} versions")
+        print(f"+ Saved article {articolo_data['numero_articolo']} with {len(versions)} versions")
         for i, version in enumerate(versions):
             version_desc = version.get('tipo_versione', 'orig')
             if version.get('numero_aggiornamento'):
@@ -1664,7 +1775,7 @@ def save_articolo_with_simplified_versioning(articolo_data, cursor, conn):
         return article_ids[0]  # Return base article ID
         
     except Exception as e:
-        print(f"❌ Error saving article with simplified versioning: {e}")
+        print(f"[ERROR] Error saving article with simplified versioning: {e}")
         conn.rollback()
         return None
 
@@ -1733,11 +1844,11 @@ def save_articolo_basic(articolo_data, cursor, conn):
         article_id = cursor.lastrowid
         conn.commit()
         
-        print(f"✓ Saved article {articolo_data['numero_articolo']} (basic schema, status: {status})")
+        print(f"+ Saved article {articolo_data['numero_articolo']} (basic schema, status: {status})")
         return article_id
         
     except Exception as e:
-        print(f"❌ Error saving article with basic schema: {e}")
+        print(f"[ERROR] Error saving article with basic schema: {e}")
         conn.rollback()
         return None
 
@@ -1806,12 +1917,17 @@ def _get_permalinks(tmp_url, session=None):
     
     if norma_res_tmp.status_code == 404:
         print("[_get_permalinks] 404 Not Found")
-        return
+        return None
     
     # Check if content contains "Provvedimento non trovato"
     if b'Provvedimento non trovato in banca dati' in norma_res_tmp.content:
         print("[_get_permalinks] Provvedimento non trovato in banca dati")
-        return
+        return None
+    
+    # Check if content contains "Errore nel caricamento delle informazioni" (404 page)
+    if b'Errore nel caricamento delle informazioni' in norma_res_tmp.content:
+        print("[_get_permalinks] Errore nel caricamento delle informazioni (404 page)")
+        return None
     
     # Extract URN from tmp_url
     urn_match = re.search(r"urn:nir:[^!]+", tmp_url)
@@ -1836,25 +1952,25 @@ def get_year_configuration():
             
             # Use provided number or estimate based on year
             if num_docs is None:
-                if target_year >= 2020:
-                    estimated_docs = 10  # Test with 10 documents for recent years
-                elif target_year >= 2010:
-                    estimated_docs = 8
-                else:
-                    estimated_docs = 5
+                # Default: try to get ALL documents by using a very high number
+                # This will effectively get all available documents for the year
+                estimated_docs = 50000  # High number to get all documents
+                print(f"TARGET: {target_year} (processing ALL available documents)")
             else:
                 estimated_docs = num_docs
-            
-            print(f"🎯 Target year: {target_year} (processing {estimated_docs} documents)")
+                print(f"TARGET: {target_year} (processing {estimated_docs} documents)")
             
             # Warning for large numbers
-            if estimated_docs > 50:
-                print(f"⚠️ Processing {estimated_docs} documents may take a long time.")
-                print(f"💡 Consider starting with a smaller number for testing.")
+            if estimated_docs > 1000:
+                print(f"WARNING: Processing ALL documents may take several hours.")
+                print(f"This is designed for comprehensive overnight data collection.")
+            elif estimated_docs > 50:
+                print(f"WARNING: Processing {estimated_docs} documents may take a long time.")
+                print(f"Consider starting with a smaller number for testing.")
             
             return OrderedDict([(target_year, estimated_docs)])
         except ValueError:
-            print(f"❌ Invalid year: {sys.argv[1]}. Using default configuration.")
+            print(f"[ERROR] Invalid year: {sys.argv[1]}. Using default configuration.")
     
     # Default configuration for testing
     return OrderedDict([
@@ -2109,6 +2225,119 @@ def process_permalinks(permalinks_and_urn, session=None):
                 }]
             }
             save_articolo_with_versions(articolo_data)
+    
+    return True  # Return True to indicate successful processing
+
+def construct_norma_url(year, doc_number, multivigente=True, format_type='auto'):
+    """
+    Construct the appropriate norma URL based on the year and format type.
+    For documents before 1900, try multiple older URN-NIR formats.
+    For documents from 1900 onwards, use the standard format.
+    
+    Args:
+        year: Document year
+        doc_number: Document number
+        multivigente: Whether to use multivigente format
+        format_type: 'auto', 'regio.decreto', 'legge', 'standard'
+    """
+    if year < 1900:
+        # For pre-1900 documents, we need to try different formats
+        # The format_type parameter allows us to specify which format to use
+        
+        if format_type == 'legge':
+            # State law format: urn:nir:stato:legge:YEAR;DOC_NUMBER
+            if multivigente:
+                return f"/uri-res/N2Ls?urn:nir:stato:legge:{year};{doc_number}!multivigente~"
+            else:
+                return f"/uri-res/N2Ls?urn:nir:stato:legge:{year};{doc_number}"
+        elif format_type == 'regio.decreto':
+            # Royal decree format: urn:nir:stato:regio.decreto:YEAR;DOC_NUMBER
+            if multivigente:
+                return f"/uri-res/N2Ls?urn:nir:stato:regio.decreto:{year};{doc_number}!multivigente~"
+            else:
+                return f"/uri-res/N2Ls?urn:nir:stato:regio.decreto:{year};{doc_number}"
+        else:
+            # Auto format - default to regio.decreto for pre-1900
+            if multivigente:
+                return f"/uri-res/N2Ls?urn:nir:stato:regio.decreto:{year};{doc_number}!multivigente~"
+            else:
+                return f"/uri-res/N2Ls?urn:nir:stato:regio.decreto:{year};{doc_number}"
+    else:
+        # Use standard format for documents from 1900 onwards
+        if multivigente:
+            return f"/uri-res/N2Ls?urn:nir:{year};{doc_number}!multivigente~"
+        else:
+            return f"/uri-res/N2Ls?urn:nir:{year};{doc_number}"
+
+def try_multiple_formats_for_old_documents(year, doc_number, session, multivigente=True):
+    """
+    Try multiple URN-NIR formats for older documents (pre-1900).
+    Returns the first successful format or None if no format works.
+    """
+    if year >= 1900:
+        # For modern documents, use standard format
+        return construct_norma_url(year, doc_number, multivigente)
+    
+    # For pre-1900 documents, try multiple formats in order of likelihood
+    formats_to_try = [
+        ('regio.decreto', f"/uri-res/N2Ls?urn:nir:stato:regio.decreto:{year};{doc_number}{'!multivigente~' if multivigente else ''}"),
+        ('legge_with_date', f"/uri-res/N2Ls?urn:nir:stato:legge:{year}-12-31;{doc_number}{'!multivigente~' if multivigente else ''}"),
+        ('legge_simple', f"/uri-res/N2Ls?urn:nir:stato:legge:{year};{doc_number}{'!multivigente~' if multivigente else ''}"),
+        ('ministero_decree', f"/uri-res/N2Ls?urn:nir:ministero.pubblica.istruzione:decreto.ministeriale:{year}-10-31;{doc_number}{'!multivigente~' if multivigente else ''}"),
+        ('standard', f"/uri-res/N2Ls?urn:nir:{year};{doc_number}{'!multivigente~' if multivigente else ''}")
+    ]
+    
+    for format_name, url in formats_to_try:
+        print(f"🔍 Trying format '{format_name}' for {year};{doc_number}")
+        
+        result = _get_permalinks(url, session=session)
+        if result is not None:
+            print(f"✅ Format '{format_name}' works for {year};{doc_number}")
+            return url
+        else:
+            print(f"❌ Format '{format_name}' failed for {year};{doc_number}")
+    
+    print(f"❌ No format worked for {year};{doc_number}")
+    return None
+
+def find_last_document_for_year(year, session, max_search=50000):
+    """
+    Find the last available document number for a given year using binary search.
+    For older documents (pre-1900), tries multiple URN-NIR formats.
+    """
+    print(f"🔍 Finding last document for year {year}...")
+    
+    # Binary search to find the last available document
+    low = 1
+    high = max_search
+    last_valid = 0
+    
+    while low <= high:
+        mid = (low + high) // 2
+        
+        # For older documents, try multiple formats
+        if year < 1900:
+            norma_url = try_multiple_formats_for_old_documents(year, mid, session, multivigente=True)
+            if norma_url:
+                result = _get_permalinks(norma_url, session=session)
+            else:
+                result = None
+        else:
+            norma_url = construct_norma_url(year, mid, multivigente=True)
+            result = _get_permalinks(norma_url, session=session)
+        
+        if result is not None:
+            # Document exists, search higher
+            last_valid = mid
+            low = mid + 1
+            print(f"📄 Document {mid} exists, searching higher...")
+        else:
+            # Document doesn't exist, search lower
+            high = mid - 1
+            print(f"❌ Document {mid} doesn't exist, searching lower...")
+    
+    print(f"✅ Last document for year {year}: {last_valid}")
+    return last_valid
 
 # ========================================
 # MAIN EXECUTION
@@ -2116,18 +2345,18 @@ def process_permalinks(permalinks_and_urn, session=None):
 
 if __name__ == '__main__':
 
-    print("🚀 NORMATTIVA-SCRAPE Unified Scraper - Enhanced Legal Document Scraper")
+    print("NORMATTIVA-SCRAPE Unified Scraper - Enhanced Legal Document Scraper")
     print("=" * 70)
-    print("✓ bodyTesto extraction for testo_completo and testo_pulito")
-    print("✓ Correlated articles extraction from links within bodyTesto")
-    print("✓ Versioning support (original + aggiornamenti)")
-    print("✓ Automatic fonte_origine population after scraping")
-    print("✓ Single unified scraper entry point")
+    print("+ bodyTesto extraction for testo_completo and testo_pulito")
+    print("+ Correlated articles extraction from links within bodyTesto")
+    print("+ Versioning support (original + aggiornamenti)")
+    print("+ Automatic fonte_origine population after scraping")
+    print("+ Single unified scraper entry point")
     print()
     
     # Show usage if help requested
     if len(sys.argv) >= 2 and sys.argv[1] in ['-h', '--help', 'help']:
-        print("📖 Utilizzo:")
+        print("USAGE:")
         print("  python scraper_optimized.py [anno] [numero_documenti]")
         print()
         print("Esempi:")
@@ -2136,10 +2365,10 @@ if __name__ == '__main__':
         print("  python scraper_optimized.py 2023 100      # Estrae 100 documenti del 2023")
         print("  python scraper_optimized.py               # Configurazione di default (2024, 5 docs)")
         print()
-        print("🧹 Per resettare il database:")
+        print("Per resettare il database:")
         print("  python clear_database.py")
         print()
-        print("💡 Caratteristiche:")
+        print("Caratteristiche:")
         print("  - Estrazione testo da div bodyTesto")
         print("  - Estrazione articoli correlati da link in bodyTesto") 
         print("  - Supporto versioning (originale + aggiornamenti)")
@@ -2155,7 +2384,7 @@ if __name__ == '__main__':
     norme_anno = get_year_configuration()
 
     # genera istanza di navigazione,
-    # con header modificati
+    # con header modificati e timeout per evitare hang
     with requests.session() as session:
         session.headers.update({
             'User-agent': "Mozilla/5.0"
@@ -2164,41 +2393,90 @@ if __name__ == '__main__':
                 "Chrome/55.0.2883.95 Safari/537.36",
             'Connection': 'keep-alive'
         })
+        
+        # Add default timeout for all requests to prevent hanging
+        session.timeout = 30
 
         # Process all documents for the specified years
         for anno, n_norme in norme_anno.items():
-            for k in range(1, n_norme+1):
+            print(f"\n{'='*60}")
+            print(f"PROCESSING YEAR {anno}")
+            print(f"{'='*60}")
+            
+            # Find the actual last document for this year
+            if n_norme > 1000:  # Only use binary search for large numbers
+                actual_last_doc = find_last_document_for_year(anno, session)
+                if actual_last_doc == 0:
+                    print(f"⚠️ No documents found for year {anno}")
+                    continue
+                n_norme = actual_last_doc
+                print(f"📊 Processing {n_norme} documents for year {anno}")
+            else:
+                print(f"📊 Processing up to {n_norme} documents for year {anno}")
+            
+            consecutive_404s = 0
+            max_consecutive_404s = 10  # Reduced since we now know the actual range
+            processed_count = 0
+            
+            for k in range(1, n_norme + 1):
                 # Use multivigente mode to show article updates buttons
-                norma_url = f"/uri-res/N2Ls?urn:nir:{anno};{k}!multivigente~"
-                print(f"Processing in multivigente mode: {norma_url}")
+                # For older documents, try multiple formats
+                if anno < 1900:
+                    norma_url = try_multiple_formats_for_old_documents(anno, k, session, multivigente=True)
+                    if not norma_url:
+                        consecutive_404s += 1
+                        print(f"⚠️ Document {k} not found in any format (consecutive 404s: {consecutive_404s})")
+                        
+                        if consecutive_404s >= max_consecutive_404s:
+                            print(f"🛑 Stopping year {anno} processing after {consecutive_404s} consecutive 404s")
+                            break
+                        continue
+                else:
+                    norma_url = construct_norma_url(anno, k, multivigente=True)
+                
+                print(f"Processing document {k}/{n_norme} for year {anno}")
 
                 # urn e url parziali della norma
-                process_permalinks(
+                result = process_permalinks(
                     _get_permalinks(
                         norma_url,
                         session=session
                     ),
                     session=session
                 )
+                
+                # Check if we got a 404 or "not found"
+                if result is None:
+                    consecutive_404s += 1
+                    print(f"⚠️ Document {k} not found (consecutive 404s: {consecutive_404s})")
+                    
+                    if consecutive_404s >= max_consecutive_404s:
+                        print(f"🛑 Stopping year {anno} processing after {consecutive_404s} consecutive 404s")
+                        break
+                else:
+                    consecutive_404s = 0  # Reset counter on successful processing
+                    processed_count += 1
+                    
+            print(f"✅ Completed processing year {anno} - processed {processed_count} documents")
 
         # ========================================
         # AUTOMATIC FONTE ORIGINE POPULATION
         # ========================================
         
         print("\n" + "=" * 70)
-        print("🎯 POPULATING FONTE ORIGINE AUTOMATICALLY")
+        print("POPULATING FONTE ORIGINE AUTOMATICALLY")
         print("=" * 70)
         
         if FonteOriginePopulator:
             try:
                 populator = FonteOriginePopulator()
                 populator.run_full_population()
-                print("✅ Fonte origine population completed successfully!")
+                print("+ Fonte origine population completed successfully!")
             except Exception as e:
-                print(f"❌ Error during fonte origine population: {e}")
-                print("⚠️  Articles may not have fonte_origine values populated")
+                print(f"ERROR: Error during fonte origine population: {e}")
+                print("WARNING: Articles may not have fonte_origine values populated")
         else:
-            print("⚠️  FonteOriginePopulator not available - skipping automatic population")
+            print("WARNING: FonteOriginePopulator not available - skipping automatic population")
 
         # ========================================
         # FINAL STATISTICS
@@ -2320,5 +2598,5 @@ if __name__ == '__main__':
         except Exception as e:
             print(f"Error generating statistics: {e}")
         
-        print("✓ Unified scraping completed with enhanced bodyTesto extraction, versioning, and automatic fonte origine population!")
-        print("✓ All articles now have fonte_origine values populated automatically!")
+        print("+ Unified scraping completed with enhanced bodyTesto extraction, versioning, and automatic fonte origine population!")
+        print("+ All articles now have fonte_origine values populated automatically!")
